@@ -1,0 +1,1516 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Booth Plan Labeling Tool</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500;600&display=swap");
+
+      *,
+      *::before,
+      *::after {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      :root {
+        --bg: #0f0f11;
+        --surface: #17171a;
+        --surface2: #1e1e22;
+        --surface3: #26262c;
+        --border: #2e2e36;
+        --accent: #7c6af7;
+        --accent2: #f7a26a;
+        --accent3: #6af7b8;
+        --text: #e8e8f0;
+        --text2: #8888a0;
+        --text3: #55556a;
+        --danger: #f76a6a;
+        --success: #6af7b8;
+        --warn: #f7d96a;
+        --r: 8px;
+      }
+
+      body {
+        font-family: "DM Sans", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+        height: 100vh;
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+      }
+
+      /* ── TOP BAR ── */
+      .topbar {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 10px 20px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .topbar .logo {
+        font-family: "DM Mono", monospace;
+        font-size: 13px;
+        font-weight: 500;
+        color: var(--accent);
+        letter-spacing: 0.05em;
+        white-space: nowrap;
+      }
+      .topbar .sep {
+        width: 1px;
+        height: 20px;
+        background: var(--border);
+      }
+      .file-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 14px;
+        background: var(--accent);
+        color: #fff;
+        border: none;
+        border-radius: var(--r);
+        font-family: "DM Sans", sans-serif;
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: opacity 0.15s;
+      }
+      .file-btn:hover {
+        opacity: 0.85;
+      }
+      .file-input {
+        display: none;
+      }
+      .topbar-right {
+        margin-left: auto;
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      .stat-pill {
+        padding: 4px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 20px;
+        font-size: 12px;
+        font-family: "DM Mono", monospace;
+        color: var(--text2);
+      }
+      .stat-pill span {
+        color: var(--accent3);
+        font-weight: 500;
+      }
+      .export-btn {
+        padding: 6px 14px;
+        background: var(--surface2);
+        border: 1px solid var(--accent3);
+        color: var(--accent3);
+        border-radius: var(--r);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: "DM Sans", sans-serif;
+        transition: background 0.15s;
+      }
+      .export-btn:hover {
+        background: rgba(106, 247, 184, 0.08);
+      }
+      .zip-btn {
+        padding: 6px 14px;
+        background: var(--surface2);
+        border: 1px solid var(--accent2);
+        color: var(--accent2);
+        border-radius: var(--r);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: "DM Sans", sans-serif;
+        transition: background 0.15s;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .zip-btn:hover {
+        background: rgba(247, 162, 106, 0.08);
+      }
+      .zip-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+      }
+      .zip-btn svg {
+        flex-shrink: 0;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      /* ── MAIN LAYOUT ── */
+      .main {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      /* ── LEFT: FILE LIST ── */
+      .sidebar {
+        width: 220px;
+        flex-shrink: 0;
+        background: var(--surface);
+        border-right: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .sidebar-header {
+        padding: 12px 14px 8px;
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text3);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .file-list {
+        overflow-y: auto;
+        flex: 1;
+      }
+      .file-item {
+        padding: 10px 14px;
+        cursor: pointer;
+        border-bottom: 1px solid var(--border);
+        transition: background 0.1s;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .file-item:hover {
+        background: var(--surface2);
+      }
+      .file-item.active {
+        background: var(--surface3);
+        border-left: 2px solid var(--accent);
+      }
+      .file-item .fname {
+        font-size: 12px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        flex: 1;
+      }
+      .file-item .fbadge {
+        font-size: 10px;
+        font-family: "DM Mono", monospace;
+        padding: 2px 6px;
+        border-radius: 4px;
+        flex-shrink: 0;
+      }
+      .fbadge.done {
+        background: rgba(106, 247, 184, 0.15);
+        color: var(--accent3);
+      }
+      .fbadge.partial {
+        background: rgba(247, 162, 106, 0.15);
+        color: var(--accent2);
+      }
+      .fbadge.empty {
+        background: rgba(136, 136, 160, 0.1);
+        color: var(--text3);
+      }
+
+      /* ── CENTER: PDF VIEWER ── */
+      .viewer-wrap {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        background: #0a0a0c;
+      }
+      .viewer-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 14px;
+        background: var(--surface);
+        border-bottom: 1px solid var(--border);
+        flex-shrink: 0;
+      }
+      .page-nav {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .nav-btn {
+        width: 28px;
+        height: 28px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 14px;
+        transition: background 0.1s;
+      }
+      .nav-btn:hover {
+        background: var(--surface3);
+      }
+      .nav-btn:disabled {
+        opacity: 0.3;
+        cursor: default;
+      }
+      .page-indicator {
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        color: var(--text2);
+        min-width: 60px;
+        text-align: center;
+      }
+      .page-type-select {
+        padding: 5px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-family: "DM Sans", sans-serif;
+        font-size: 12px;
+        cursor: pointer;
+      }
+      .page-type-select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .mark-btn {
+        padding: 5px 12px;
+        border: none;
+        border-radius: 6px;
+        font-size: 12px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: "DM Sans", sans-serif;
+        transition: opacity 0.15s;
+      }
+      .mark-btn:hover {
+        opacity: 0.8;
+      }
+      .mark-dim {
+        background: rgba(124, 106, 247, 0.2);
+        color: var(--accent);
+        border: 1px solid var(--accent);
+      }
+      .mark-skip {
+        background: rgba(247, 106, 106, 0.1);
+        color: var(--danger);
+        border: 1px solid var(--danger);
+      }
+      .toolbar-spacer {
+        flex: 1;
+      }
+      .zoom-controls {
+        display: flex;
+        gap: 4px;
+      }
+
+      .canvas-wrap {
+        flex: 1;
+        overflow: auto;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding: 20px;
+      }
+      #pdfCanvas {
+        box-shadow: 0 4px 40px rgba(0, 0, 0, 0.6);
+        border-radius: 4px;
+        display: block;
+        cursor: crosshair;
+      }
+
+      /* page status bar */
+      .page-status-bar {
+        display: flex;
+        gap: 6px;
+        padding: 6px 14px;
+        border-top: 1px solid var(--border);
+        overflow-x: auto;
+        flex-shrink: 0;
+      }
+      .page-dot {
+        width: 22px;
+        height: 22px;
+        border-radius: 4px;
+        border: 1px solid var(--border);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 9px;
+        font-family: "DM Mono", monospace;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: all 0.1s;
+        color: var(--text3);
+        background: var(--surface2);
+      }
+      .page-dot:hover {
+        border-color: var(--accent);
+        color: var(--accent);
+      }
+      .page-dot.current {
+        border-color: var(--accent);
+        background: rgba(124, 106, 247, 0.2);
+        color: var(--accent);
+      }
+      .page-dot.has-dim {
+        background: rgba(106, 247, 184, 0.15);
+        border-color: var(--accent3);
+        color: var(--accent3);
+      }
+      .page-dot.skipped {
+        background: rgba(247, 106, 106, 0.08);
+        border-color: #3a2020;
+        color: var(--text3);
+      }
+
+      /* ── RIGHT: LABEL PANEL ── */
+      .label-panel {
+        width: 300px;
+        flex-shrink: 0;
+        background: var(--surface);
+        border-left: 1px solid var(--border);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+      .panel-section {
+        padding: 14px;
+        border-bottom: 1px solid var(--border);
+      }
+      .panel-section h3 {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--text3);
+        margin-bottom: 10px;
+      }
+      .field-row {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-bottom: 10px;
+      }
+      .field-row label {
+        font-size: 11px;
+        color: var(--text2);
+        font-family: "DM Mono", monospace;
+      }
+      .field-row input,
+      .field-row select {
+        padding: 7px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        width: 100%;
+        transition: border-color 0.15s;
+      }
+      .field-row input:focus,
+      .field-row select:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .field-row input::placeholder {
+        color: var(--text3);
+      }
+
+      /* measurements list */
+      .measurements-list {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        max-height: 160px;
+        overflow-y: auto;
+      }
+      .meas-item {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 6px 8px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+      }
+      .meas-item .mval {
+        flex: 1;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        color: var(--accent3);
+      }
+      .meas-item .del-m {
+        background: none;
+        border: none;
+        color: var(--text3);
+        cursor: pointer;
+        font-size: 14px;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      .meas-item .del-m:hover {
+        color: var(--danger);
+      }
+      .add-meas-row {
+        display: flex;
+        gap: 6px;
+        margin-top: 6px;
+        align-items: center;
+      }
+      .add-meas-row input {
+        flex: 1;
+        min-width: 0;
+        padding: 0 8px;
+        height: 28px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+      }
+      .add-meas-row input:focus {
+        outline: none;
+        border-color: var(--accent);
+      }
+      .role-select {
+        width: 36px;
+        padding: 4px 2px;
+        background: var(--surface3);
+        border: 1px solid var(--border);
+        color: var(--accent2);
+        border-radius: 6px;
+        font-family: "DM Mono", monospace;
+        font-size: 10px;
+        font-weight: 600;
+        cursor: pointer;
+        text-align: center;
+        flex-shrink: 0;
+        height: 28px;
+      }
+      .role-select:focus {
+        outline: none;
+        border-color: var(--accent2);
+      }
+      .role-select.hidden {
+        display: none;
+      }
+      .role-select-full {
+        width: 100%;
+        padding: 5px 8px;
+        background: var(--surface3);
+        border: 1px solid var(--accent2);
+        color: var(--accent2);
+        border-radius: 6px;
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      .role-select-full:focus {
+        outline: none;
+        border-color: var(--accent2);
+      }
+      .role-badge {
+        font-size: 9px;
+        font-family: "DM Mono", monospace;
+        font-weight: 700;
+        padding: 2px 5px;
+        border-radius: 4px;
+        flex-shrink: 0;
+        letter-spacing: 0.04em;
+      }
+      .role-badge.width {
+        background: rgba(124, 106, 247, 0.2);
+        color: var(--accent);
+      }
+      .role-badge.depth {
+        background: rgba(247, 162, 106, 0.2);
+        color: var(--accent2);
+      }
+      .role-badge.height {
+        background: rgba(106, 247, 184, 0.2);
+        color: var(--accent3);
+      }
+      .role-badge.unknown {
+        background: rgba(136, 136, 160, 0.1);
+        color: var(--text3);
+      }
+      .add-btn {
+        padding: 0 10px;
+        height: 28px;
+        background: var(--accent);
+        border: none;
+        border-radius: 6px;
+        color: #fff;
+        font-size: 16px;
+        line-height: 1;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .add-btn:hover {
+        opacity: 0.85;
+      }
+
+      /* summary section */
+      .summary-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 8px;
+      }
+      .sum-field {
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+      }
+      .sum-field label {
+        font-size: 10px;
+        color: var(--text3);
+        font-family: "DM Mono", monospace;
+      }
+      .sum-field input {
+        padding: 6px 8px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        color: var(--text);
+        border-radius: 6px;
+        font-family: "DM Mono", monospace;
+        font-size: 12px;
+        width: 100%;
+      }
+      .sum-field input:focus {
+        outline: none;
+        border-color: var(--accent2);
+      }
+
+      /* save btn */
+      .save-page-btn {
+        width: 100%;
+        padding: 10px;
+        background: var(--accent);
+        border: none;
+        border-radius: var(--r);
+        color: #fff;
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        font-family: "DM Sans", sans-serif;
+        margin-top: 2px;
+        transition: opacity 0.15s;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+      }
+      .save-page-btn:hover {
+        opacity: 0.85;
+      }
+
+      /* all-pages review */
+      .review-scroll {
+        flex: 1;
+        overflow-y: auto;
+        padding: 10px 14px;
+      }
+      .review-item {
+        padding: 8px 10px;
+        background: var(--surface2);
+        border: 1px solid var(--border);
+        border-radius: 6px;
+        margin-bottom: 6px;
+        cursor: pointer;
+        transition: border-color 0.1s;
+      }
+      .review-item:hover {
+        border-color: var(--accent);
+      }
+      .review-item .ri-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 4px;
+      }
+      .review-item .ri-page {
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        color: var(--accent);
+      }
+      .review-item .ri-type {
+        font-size: 10px;
+        color: var(--text3);
+      }
+      .review-item .ri-dims {
+        font-family: "DM Mono", monospace;
+        font-size: 11px;
+        color: var(--accent3);
+      }
+
+      /* empty state */
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        color: var(--text3);
+        gap: 12px;
+      }
+      .empty-state .big-icon {
+        font-size: 48px;
+        opacity: 0.3;
+      }
+      .empty-state p {
+        font-size: 14px;
+        text-align: center;
+        line-height: 1.6;
+      }
+
+      /* toast */
+      .toast {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        padding: 10px 18px;
+        background: var(--surface3);
+        border: 1px solid var(--accent3);
+        color: var(--accent3);
+        border-radius: var(--r);
+        font-size: 13px;
+        opacity: 0;
+        transform: translateY(8px);
+        transition: all 0.25s;
+        pointer-events: none;
+        z-index: 100;
+        font-family: "DM Mono", monospace;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+
+      /* scrollbars */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: var(--border);
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--text3);
+      }
+
+      .is-primary-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 6px;
+      }
+      .is-primary-row label {
+        font-size: 12px;
+        color: var(--text2);
+        cursor: pointer;
+        user-select: none;
+      }
+      .is-primary-row input[type="checkbox"] {
+        accent-color: var(--accent2);
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <div class="logo">⬡ BOOTH LABELER</div>
+      <div class="sep"></div>
+      <button
+        class="file-btn"
+        onclick="document.getElementById('fileInput').click()"
+      >
+        + Load PDFs
+      </button>
+      <input
+        type="file"
+        id="fileInput"
+        class="file-input"
+        multiple
+        accept=".pdf"
+      />
+      <div class="topbar-right">
+        <div class="stat-pill">Files: <span id="statFiles">0</span></div>
+        <div class="stat-pill">Labeled: <span id="statLabeled">0</span></div>
+        <div class="stat-pill">Pages: <span id="statPages">0</span></div>
+        <button class="export-btn" onclick="exportDataset()">
+          ↓ Export JSONL
+        </button>
+        <button
+          class="zip-btn"
+          id="zipBtn"
+          onclick="exportZip()"
+          title="Download all loaded PDFs as a ZIP"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 16 16"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M2 13h12M8 2v8m0 0l-3-3m3 3l3-3"
+              stroke="currentColor"
+              stroke-width="1.5"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+            />
+          </svg>
+          ZIP PDFs
+        </button>
+      </div>
+    </div>
+
+    <!-- MAIN -->
+    <div class="main">
+      <!-- SIDEBAR: file list -->
+      <div class="sidebar">
+        <div class="sidebar-header">PDFs</div>
+        <div class="file-list" id="fileList">
+          <div
+            class="empty-state"
+            style="padding: 20px; height: auto; margin-top: 30px"
+          >
+            <div class="big-icon">📂</div>
+            <p style="font-size: 12px">Load PDF files to start labeling</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- CENTER: PDF viewer -->
+      <div class="viewer-wrap">
+        <div class="viewer-toolbar">
+          <div class="page-nav">
+            <button
+              class="nav-btn"
+              id="prevBtn"
+              onclick="changePage(-1)"
+              disabled
+            >
+              ‹
+            </button>
+            <span class="page-indicator" id="pageIndicator">— / —</span>
+            <button
+              class="nav-btn"
+              id="nextBtn"
+              onclick="changePage(1)"
+              disabled
+            >
+              ›
+            </button>
+          </div>
+          <select
+            class="page-type-select"
+            id="pageTypeQuick"
+            onchange="applyQuickType()"
+          >
+            <option value="">— set page type —</option>
+            <option value="floor_plan">Floor plan</option>
+            <option value="elevation">Elevation</option>
+            <option value="side_elevation">Side elevation</option>
+            <option value="3d_render">3D render</option>
+            <option value="technical_drawing">Technical drawing</option>
+            <option value="skip">Skip (no dimensions)</option>
+          </select>
+          <button class="mark-btn mark-dim" onclick="quickMarkDimension()">
+            + Dimension
+          </button>
+          <div class="toolbar-spacer"></div>
+          <div class="zoom-controls">
+            <button class="nav-btn" onclick="changeZoom(-0.2)">−</button>
+            <span class="page-indicator" id="zoomLabel">100%</span>
+            <button class="nav-btn" onclick="changeZoom(0.2)">+</button>
+          </div>
+        </div>
+        <div class="canvas-wrap" id="canvasWrap">
+          <div class="empty-state">
+            <div class="big-icon">📄</div>
+            <p>Load PDFs from the left panel<br />to start reviewing pages</p>
+          </div>
+        </div>
+        <div class="page-status-bar" id="pageStatusBar"></div>
+      </div>
+
+      <!-- RIGHT: Label panel -->
+      <div class="label-panel">
+        <!-- Current page label -->
+        <div class="panel-section" id="pageSection">
+          <h3>Page <span id="panelPageNum">—</span> Label</h3>
+          <div class="field-row">
+            <label>VIEW TYPE</label>
+            <select id="pageTypePanel" onchange="syncPageType()">
+              <option value="">— select type —</option>
+              <option value="floor_plan">Floor plan</option>
+              <option value="elevation">Elevation</option>
+              <option value="side_elevation">Side elevation</option>
+              <option value="3d_render">3D render</option>
+              <option value="technical_drawing">Technical drawing</option>
+              <option value="skip">Skip (no dimensions)</option>
+            </select>
+          </div>
+          <div class="is-primary-row">
+            <input type="checkbox" id="isPrimary" onchange="syncPageType()" />
+            <label for="isPrimary"
+              >Primary dimension source for booth size</label
+            >
+          </div>
+          <div class="field-row">
+            <label>MEASUREMENTS ON THIS PAGE</label>
+            <div class="measurements-list" id="measList"></div>
+            <div id="roleRow" style="display: none; margin-bottom: 4px">
+              <select id="newMeasRole" class="role-select-full">
+                <option value="unknown">? unknown</option>
+                <option value="width">W width</option>
+                <option value="depth">D depth</option>
+                <option value="height">H height</option>
+              </select>
+            </div>
+            <div class="add-meas-row">
+              <input
+                type="text"
+                id="newMeas"
+                placeholder="e.g. 6000mm or 10M"
+                onkeydown="if (event.key === 'Enter') addMeasurement();"
+              />
+              <button class="add-btn" onclick="addMeasurement()">+</button>
+            </div>
+          </div>
+          <button class="save-page-btn" onclick="savePage()">
+            ✓ Save Page Label
+          </button>
+        </div>
+
+        <!-- Summary -->
+        <div class="panel-section">
+          <h3>Booth Summary (mm)</h3>
+          <div class="summary-grid">
+            <div class="sum-field">
+              <label>WIDTH_MM</label>
+              <input
+                type="number"
+                id="sumWidth"
+                placeholder="6000"
+                oninput="syncSummary()"
+              />
+            </div>
+            <div class="sum-field">
+              <label>DEPTH_MM</label>
+              <input
+                type="number"
+                id="sumDepth"
+                placeholder="4000"
+                oninput="syncSummary()"
+              />
+            </div>
+            <div class="sum-field">
+              <label>HEIGHT_MM</label>
+              <input
+                type="number"
+                id="sumHeight"
+                placeholder="3500"
+                oninput="syncSummary()"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- Review -->
+        <div
+          class="panel-section"
+          style="border-bottom: none; padding-bottom: 6px"
+        >
+          <h3>Labeled Pages</h3>
+        </div>
+        <div class="review-scroll" id="reviewScroll">
+          <div
+            style="
+              color: var(--text3);
+              font-size: 12px;
+              text-align: center;
+              padding: 20px;
+            "
+          >
+            No pages labeled yet
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="toast" id="toast"></div>
+
+    <script>
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+      // ── STATE ──
+      let files = []; // [{name, pdfDoc, pageCount, labels: {}, boothInfo: {}}]
+      let activeFileIdx = -1;
+      let currentPage = 1;
+      let zoom = 1.2;
+      let renderTask = null;
+
+      function activeFile() {
+        return activeFileIdx >= 0 ? files[activeFileIdx] : null;
+      }
+      function pageKey(p) {
+        return String(p);
+      }
+
+      // ── FILE LOADING ──
+      document
+        .getElementById("fileInput")
+        .addEventListener("change", async (e) => {
+          const newFiles = Array.from(e.target.files);
+          for (const f of newFiles) {
+            if (files.find((x) => x.name === f.name)) continue;
+            const ab = await f.arrayBuffer();
+            const pdfDoc = await pdfjsLib.getDocument({ data: ab.slice() })
+              .promise;
+            files.push({
+              name: f.name,
+              pdfDoc,
+              rawBytes: ab,
+              pageCount: pdfDoc.numPages,
+              labels: {},
+              summary: { width_mm: null, depth_mm: null, height_mm: null },
+            });
+          }
+          e.target.value = "";
+          renderFileList();
+          updateStats();
+          if (activeFileIdx < 0 && files.length > 0) selectFile(0);
+        });
+
+      function renderFileList() {
+        const el = document.getElementById("fileList");
+        if (!files.length) {
+          el.innerHTML = `<div class="empty-state" style="padding:20px;height:auto;margin-top:30px;">
+      <div class="big-icon">📂</div>
+      <p style="font-size:12px;">Load PDF files to start labeling</p></div>`;
+          return;
+        }
+        el.innerHTML = files
+          .map((f, i) => {
+            const labeled = Object.keys(f.labels).filter(
+              (k) =>
+                f.labels[k].viewType !== "skip" &&
+                f.labels[k].measurements?.length,
+            ).length;
+            const total = f.pageCount;
+            const visited = Object.keys(f.labels).length;
+            let status = "empty",
+              badge = "0/" + total;
+            if (labeled > 0 && visited >= total) {
+              status = "done";
+              badge = labeled + " dim";
+            } else if (labeled > 0 || visited > 0) {
+              status = "partial";
+              badge = labeled + "/" + total;
+            }
+            return `<div class="file-item ${i === activeFileIdx ? "active" : ""}" onclick="selectFile(${i})">
+      <span class="fname" title="${f.name}">${f.name}</span>
+      <span class="fbadge ${status}">${badge}</span>
+    </div>`;
+          })
+          .join("");
+      }
+
+      async function selectFile(idx) {
+        activeFileIdx = idx;
+        currentPage = 1;
+        renderFileList();
+        loadSummary();
+        await renderPage();
+        renderPageStatusBar();
+        renderReview();
+      }
+
+      // ── PAGE RENDERING ──
+      async function renderPage() {
+        const f = activeFile();
+        if (!f) return;
+        const wrap = document.getElementById("canvasWrap");
+        wrap.innerHTML = '<canvas id="pdfCanvas"></canvas>';
+        const canvas = document.getElementById("pdfCanvas");
+        const ctx = canvas.getContext("2d");
+
+        if (renderTask) {
+          try {
+            renderTask.cancel();
+          } catch (e) {}
+        }
+
+        const page = await f.pdfDoc.getPage(currentPage);
+        const vp = page.getViewport({ scale: zoom });
+        canvas.width = vp.width;
+        canvas.height = vp.height;
+
+        renderTask = page.render({ canvasContext: ctx, viewport: vp });
+        try {
+          await renderTask.promise;
+        } catch (e) {}
+
+        document.getElementById("pageIndicator").textContent =
+          `${currentPage} / ${f.pageCount}`;
+        document.getElementById("panelPageNum").textContent = currentPage;
+        document.getElementById("prevBtn").disabled = currentPage <= 1;
+        document.getElementById("nextBtn").disabled =
+          currentPage >= f.pageCount;
+        document.getElementById("zoomLabel").textContent =
+          Math.round(zoom * 100) + "%";
+
+        loadPageLabel();
+        highlightPageDot();
+      }
+
+      function changePage(delta) {
+        const f = activeFile();
+        if (!f) return;
+        const np = currentPage + delta;
+        if (np < 1 || np > f.pageCount) return;
+        currentPage = np;
+        renderPage();
+      }
+
+      function changeZoom(delta) {
+        zoom = Math.max(0.4, Math.min(3.0, zoom + delta));
+        renderPage();
+      }
+
+      // ── PAGE STATUS BAR ──
+      function renderPageStatusBar() {
+        const f = activeFile();
+        const bar = document.getElementById("pageStatusBar");
+        if (!f) {
+          bar.innerHTML = "";
+          return;
+        }
+        bar.innerHTML = Array.from({ length: f.pageCount }, (_, i) => {
+          const p = i + 1;
+          const lbl = f.labels[pageKey(p)];
+          let cls = "";
+          if (p === currentPage) cls = "current";
+          else if (lbl && lbl.viewType === "skip") cls = "skipped";
+          else if (lbl && lbl.measurements?.length) cls = "has-dim";
+          return `<div class="page-dot ${cls}" onclick="jumpToPage(${p})" title="Page ${p}">${p}</div>`;
+        }).join("");
+      }
+
+      function highlightPageDot() {
+        const f = activeFile();
+        if (!f) return;
+        const dots = document.querySelectorAll(".page-dot");
+        dots.forEach((d, i) => {
+          const p = i + 1;
+          const lbl = f.labels[pageKey(p)];
+          d.className = "page-dot";
+          if (p === currentPage) d.classList.add("current");
+          else if (lbl && lbl.viewType === "skip") d.classList.add("skipped");
+          else if (lbl && lbl.measurements?.length) d.classList.add("has-dim");
+          d.onclick = () => jumpToPage(p);
+        });
+      }
+
+      function jumpToPage(p) {
+        currentPage = p;
+        renderPage();
+      }
+
+      // ── LABEL SYNC ──
+      function loadSummary() {
+        const f = activeFile();
+        if (!f) return;
+        document.getElementById("sumWidth").value = f.summary.width_mm || "";
+        document.getElementById("sumDepth").value = f.summary.depth_mm || "";
+        document.getElementById("sumHeight").value = f.summary.height_mm || "";
+      }
+      function syncSummary() {
+        const f = activeFile();
+        if (!f) return;
+        f.summary.width_mm = +document.getElementById("sumWidth").value || null;
+        f.summary.depth_mm = +document.getElementById("sumDepth").value || null;
+        f.summary.height_mm =
+          +document.getElementById("sumHeight").value || null;
+      }
+
+      function loadPageLabel() {
+        const f = activeFile();
+        if (!f) return;
+        const lbl = f.labels[pageKey(currentPage)] || {};
+        document.getElementById("pageTypePanel").value = lbl.viewType || "";
+        document.getElementById("pageTypeQuick").value = lbl.viewType || "";
+        document.getElementById("isPrimary").checked = !!lbl.isPrimary;
+        updateRoleVisibility(lbl.viewType || "");
+        renderMeasurements(lbl.measurements || [], lbl.viewType || "");
+      }
+
+      function applyQuickType() {
+        const v = document.getElementById("pageTypeQuick").value;
+        document.getElementById("pageTypePanel").value = v;
+        updateRoleVisibility(v);
+      }
+      function syncPageType() {
+        const v = document.getElementById("pageTypePanel").value;
+        document.getElementById("pageTypeQuick").value = v;
+        updateRoleVisibility(v);
+      }
+
+      function needsRole(viewType) {
+        return [
+          "floor_plan",
+          "elevation",
+          "side_elevation",
+          "3d_render",
+        ].includes(viewType);
+      }
+
+      function updateRoleVisibility(viewType) {
+        const roleRow = document.getElementById("roleRow");
+        roleRow.style.display = needsRole(viewType) ? "block" : "none";
+      }
+
+      function renderMeasurements(arr, viewType) {
+        const el = document.getElementById("measList");
+        // resolve current viewType if not passed
+        if (viewType === undefined) {
+          viewType = document.getElementById("pageTypePanel").value;
+        }
+        const showRole = needsRole(viewType);
+        if (!arr.length) {
+          el.innerHTML =
+            '<div style="color:var(--text3);font-size:11px;padding:4px;">No measurements added</div>';
+          return;
+        }
+        el.innerHTML = arr
+          .map((m, i) => {
+            const val = typeof m === "object" ? m.value : m;
+            const role =
+              typeof m === "object" ? m.role || "unknown" : "unknown";
+            const badge = showRole
+              ? `<span class="role-badge ${role}">${role === "unknown" ? "?" : role[0].toUpperCase()}</span>`
+              : "";
+            return `<div class="meas-item">
+      ${badge}
+      <span class="mval">${val}</span>
+      <button class="del-m" onclick="removeMeasurement(${i})">×</button>
+    </div>`;
+          })
+          .join("");
+      }
+
+      function addMeasurement() {
+        const inp = document.getElementById("newMeas");
+        const val = inp.value.trim();
+        if (!val) return;
+        const f = activeFile();
+        if (!f) return;
+        const key = pageKey(currentPage);
+        if (!f.labels[key])
+          f.labels[key] = { viewType: "", measurements: [], isPrimary: false };
+        f.labels[key].measurements = f.labels[key].measurements || [];
+
+        const viewType = document.getElementById("pageTypePanel").value;
+        if (needsRole(viewType)) {
+          const role =
+            document.getElementById("newMeasRole").value || "unknown";
+          f.labels[key].measurements.push({ value: val, role });
+        } else {
+          // technical_drawing: store plain string
+          f.labels[key].measurements.push(val);
+        }
+
+        renderMeasurements(f.labels[key].measurements, viewType);
+        inp.value = "";
+        inp.focus();
+      }
+
+      function removeMeasurement(idx) {
+        const f = activeFile();
+        if (!f) return;
+        const key = pageKey(currentPage);
+        f.labels[key].measurements.splice(idx, 1);
+        const viewType = document.getElementById("pageTypePanel").value;
+        renderMeasurements(f.labels[key].measurements, viewType);
+      }
+
+      function quickMarkDimension() {
+        const inp = document.getElementById("newMeas");
+        inp.focus();
+        showToast("Type a measurement and press Enter or +");
+      }
+
+      function savePage() {
+        const f = activeFile();
+        if (!f) return;
+        const key = pageKey(currentPage);
+        const viewType = document.getElementById("pageTypePanel").value;
+        const isPrimary = document.getElementById("isPrimary").checked;
+        const existing = f.labels[key] || {};
+        f.labels[key] = {
+          viewType: viewType || existing.viewType || "skip",
+          measurements: existing.measurements || [],
+          isPrimary,
+        };
+        renderFileList();
+        renderPageStatusBar();
+        highlightPageDot();
+        renderReview();
+        updateStats();
+        showToast("Page " + currentPage + " saved ✓");
+        // auto advance
+        if (currentPage < f.pageCount) {
+          setTimeout(() => changePage(1), 300);
+        }
+      }
+
+      // ── REVIEW PANEL ──
+      function renderReview() {
+        const f = activeFile();
+        const el = document.getElementById("reviewScroll");
+        if (!f || !Object.keys(f.labels).length) {
+          el.innerHTML =
+            '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px;">No pages labeled yet</div>';
+          return;
+        }
+        const entries = Object.entries(f.labels)
+          .filter(([, v]) => v.viewType && v.viewType !== "skip")
+          .sort((a, b) => +a[0] - +b[0]);
+        if (!entries.length) {
+          el.innerHTML =
+            '<div style="color:var(--text3);font-size:12px;text-align:center;padding:20px;">No dimension pages yet</div>';
+          return;
+        }
+        el.innerHTML = entries
+          .map(([pg, lbl]) => {
+            const dimStr =
+              (lbl.measurements || [])
+                .map((m) => {
+                  if (typeof m === "object") {
+                    const roleChar =
+                      m.role && m.role !== "unknown"
+                        ? m.role[0].toUpperCase() + ":"
+                        : "";
+                    return roleChar + m.value;
+                  }
+                  return m;
+                })
+                .join(" · ") || "—";
+            return `<div class="review-item" onclick="jumpToPage(${pg})">
+      <div class="ri-header">
+        <span class="ri-page">Page ${pg}</span>
+        <span class="ri-type">${lbl.viewType}${lbl.isPrimary ? " ★" : ""}</span>
+      </div>
+      <div class="ri-dims">${dimStr}</div>
+    </div>`;
+          })
+          .join("");
+      }
+
+      // ── STATS ──
+      function updateStats() {
+        document.getElementById("statFiles").textContent = files.length;
+        const labeled = files.filter((f) =>
+          Object.values(f.labels).some((l) => l.measurements?.length),
+        ).length;
+        document.getElementById("statLabeled").textContent = labeled;
+        const pages = files.reduce(
+          (s, f) =>
+            s +
+            Object.keys(f.labels).filter(
+              (k) => f.labels[k].measurements?.length,
+            ).length,
+          0,
+        );
+        document.getElementById("statPages").textContent = pages;
+      }
+
+      // ── EXPORT ──
+      function exportDataset() {
+        const lines = [];
+        for (const f of files) {
+          const dimPages = Object.entries(f.labels)
+            .filter(
+              ([, v]) =>
+                v.viewType && v.viewType !== "skip" && v.measurements?.length,
+            )
+            .sort((a, b) => +a[0] - +b[0]);
+          if (!dimPages.length) continue;
+
+          const dimByPage = {};
+          for (const [pg, lbl] of dimPages) {
+            const isLayout = needsRole(lbl.viewType);
+            dimByPage[pg] = {
+              view_type: lbl.viewType,
+              is_primary: lbl.isPrimary,
+              // layout pages: [{value, role}], technical: ["raw string"]
+              measurements: lbl.measurements,
+            };
+          }
+
+          // helper: get raw numeric string from a measurement entry
+          const rawStr = (m) => (typeof m === "object" ? m.value : m);
+
+          const record = {
+            file: f.name,
+            total_pages: f.pageCount,
+            dimensions_by_page: dimByPage,
+            summary: {
+              width_mm: f.summary.width_mm,
+              depth_mm: f.summary.depth_mm,
+              height_mm: f.summary.height_mm,
+              all_measurements_mm: [
+                ...new Set(
+                  dimPages
+                    .flatMap(([, v]) => v.measurements)
+                    .map((m) => {
+                      const str = rawStr(m);
+                      const n = parseFloat(str.replace(/[^0-9.]/g, ""));
+                      if (isNaN(n)) return null;
+                      if (/mm/i.test(str)) return n;
+                      if (/[mM]$/.test(str.trim())) return n * 1000;
+                      if (/cm/i.test(str)) return n * 10;
+                      return n;
+                    })
+                    .filter(Boolean),
+                ),
+              ].sort((a, b) => a - b),
+            },
+          };
+          lines.push(JSON.stringify(record));
+        }
+
+        if (!lines.length) {
+          showToast("No labeled data to export");
+          return;
+        }
+
+        const blob = new Blob([lines.join("\n")], {
+          type: "application/jsonl",
+        });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download =
+          "booth_labels_" + new Date().toISOString().slice(0, 10) + ".jsonl";
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast(`Exported ${lines.length} records ✓`);
+      }
+
+      // ── EXPORT ZIP ──
+      async function exportZip() {
+        if (!files.length) {
+          showToast("No PDFs loaded");
+          return;
+        }
+
+        const btn = document.getElementById("zipBtn");
+        btn.disabled = true;
+        btn.innerHTML = `
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+         style="animation: spin .8s linear infinite">
+      <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="20 18"/>
+    </svg>
+    Zipping…`;
+
+        try {
+          const zip = new JSZip();
+          const folder = zip.folder("booth_pdfs");
+
+          for (const f of files) {
+            folder.file(f.name, f.rawBytes);
+          }
+
+          const blob = await zip.generateAsync(
+            {
+              type: "blob",
+              compression: "DEFLATE",
+              compressionOptions: { level: 6 },
+              streamFiles: true,
+            },
+            (meta) => {
+              btn.innerHTML = `
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"
+             style="animation: spin .8s linear infinite">
+          <circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="20 18"/>
+        </svg>
+        ${Math.round(meta.percent)}%`;
+            },
+          );
+
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download =
+            "booth_pdfs_" + new Date().toISOString().slice(0, 10) + ".zip";
+          a.click();
+          URL.revokeObjectURL(url);
+          showToast(
+            `Zipped ${files.length} PDF${files.length > 1 ? "s" : ""} ✓`,
+          );
+        } catch (err) {
+          showToast("ZIP failed: " + err.message);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = `
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M2 13h12M8 2v8m0 0l-3-3m3 3l3-3" stroke="currentColor" stroke-width="1.5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      ZIP PDFs`;
+        }
+      }
+
+      function showToast(msg) {
+        const t = document.getElementById("toast");
+        t.textContent = msg;
+        t.classList.add("show");
+        setTimeout(() => t.classList.remove("show"), 2200);
+      }
+
+      // ── KEYBOARD SHORTCUTS ──
+      document.addEventListener("keydown", (e) => {
+        if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT")
+          return;
+        if (e.key === "ArrowRight" || e.key === "ArrowDown") changePage(1);
+        if (e.key === "ArrowLeft" || e.key === "ArrowUp") changePage(-1);
+        if (e.key === "Enter") savePage();
+        if (e.key === "+" || e.key === "=") changeZoom(0.2);
+        if (e.key === "-") changeZoom(-0.2);
+      });
+    </script>
+  </body>
+</html>
