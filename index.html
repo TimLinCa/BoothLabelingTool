@@ -399,7 +399,7 @@
     letter-spacing: .04em;
   }
   .role-badge.width  { background: rgba(124,106,247,.2); color: var(--accent); }
-  .role-badge.depth  { background: rgba(247,162,106,.2); color: var(--accent2); }
+  .role-badge.length { background: rgba(247,162,106,.2); color: var(--accent2); }
   .role-badge.height { background: rgba(106,247,184,.2); color: var(--accent3); }
   .role-badge.unknown { background: rgba(136,136,160,.1); color: var(--text3); }
   .add-btn {
@@ -599,7 +599,7 @@
           <select id="newMeasRole" class="role-select-full">
             <option value="unknown">? unknown</option>
             <option value="width">W  width</option>
-            <option value="depth">D  depth</option>
+            <option value="length">L  length</option>
             <option value="height">H  height</option>
           </select>
         </div>
@@ -623,8 +623,8 @@
           <input type="number" id="sumWidth" placeholder="6000" oninput="syncSummary()">
         </div>
         <div class="sum-field">
-          <label>DEPTH_MM</label>
-          <input type="number" id="sumDepth" placeholder="4000" oninput="syncSummary()">
+          <label>LENGTH_MM</label>
+          <input type="number" id="sumLength" placeholder="4000" oninput="syncSummary()">
         </div>
         <div class="sum-field">
           <label>HEIGHT_MM</label>
@@ -675,7 +675,7 @@ document.getElementById('fileInput').addEventListener('change', async e => {
       rawBytes: ab,
       pageCount: pdfDoc.numPages,
       labels: {},
-      summary: { width_mm: null, depth_mm: null, height_mm: null }
+      summary: { width_mm: null, length_mm: null, height_mm: null }
     });
   }
   e.target.value = '';
@@ -846,16 +846,54 @@ function jumpToPage(p) {
 function loadSummary() {
   const f = activeFile();
   if (!f) return;
-  document.getElementById('sumWidth').value = f.summary.width_mm || '';
-  document.getElementById('sumDepth').value = f.summary.depth_mm || '';
+  document.getElementById('sumWidth').value  = f.summary.width_mm  || '';
+  document.getElementById('sumLength').value = f.summary.length_mm || '';
   document.getElementById('sumHeight').value = f.summary.height_mm || '';
 }
 function syncSummary() {
   const f = activeFile();
   if (!f) return;
-  f.summary.width_mm = +document.getElementById('sumWidth').value || null;
-  f.summary.depth_mm = +document.getElementById('sumDepth').value || null;
+  f.summary.width_mm  = +document.getElementById('sumWidth').value  || null;
+  f.summary.length_mm = +document.getElementById('sumLength').value || null;
   f.summary.height_mm = +document.getElementById('sumHeight').value || null;
+}
+
+// Auto-fill summary by scanning all labeled pages for W/L/H roles
+function autoFillSummary() {
+  const f = activeFile();
+  if (!f) return;
+
+  const toMM = val => {
+    const str = String(val);
+    const n = parseFloat(str.replace(/[^0-9.]/g, ''));
+    if (isNaN(n)) return null;
+    if (/mm/i.test(str))          return n;
+    if (/[mM]$/.test(str.trim())) return n * 1000;
+    if (/cm/i.test(str))          return n * 10;
+    return n; // bare number — assume mm
+  };
+
+  let width_mm = null, length_mm = null, height_mm = null;
+
+  // Scan all labeled pages
+  for (const lbl of Object.values(f.labels)) {
+    if (!needsRole(lbl.viewType)) continue;
+    for (const m of (lbl.measurements || [])) {
+      if (typeof m !== 'object') continue;
+      const val = toMM(m.value);
+      if (val === null) continue;
+      if (m.role === 'width'  && !width_mm)  width_mm  = val;
+      if (m.role === 'length' && !length_mm) length_mm = val;
+      if (m.role === 'height' && !height_mm) height_mm = val;
+    }
+  }
+
+  // Only fill fields that are currently empty — don't overwrite manual edits
+  if (width_mm  && !f.summary.width_mm)  f.summary.width_mm  = width_mm;
+  if (length_mm && !f.summary.length_mm) f.summary.length_mm = length_mm;
+  if (height_mm && !f.summary.height_mm) f.summary.height_mm = height_mm;
+
+  loadSummary(); // refresh UI
 }
 
 function loadPageLabel() {
@@ -970,6 +1008,7 @@ function savePage() {
   highlightPageDot();
   renderReview();
   updateStats();
+  autoFillSummary();  // ✅ auto-fill summary from labeled roles
   showToast('Page ' + currentPage + ' saved ✓');
   // auto advance
   if (currentPage < f.pageCount) {
@@ -1047,8 +1086,8 @@ function exportDataset() {
       total_pages: f.pageCount,
       dimensions_by_page: dimByPage,
       summary: {
-        width_mm: f.summary.width_mm,
-        depth_mm: f.summary.depth_mm,
+        width_mm:  f.summary.width_mm,
+        length_mm: f.summary.length_mm,
         height_mm: f.summary.height_mm,
         all_measurements_mm: [...new Set(
           dimPages.flatMap(([, v]) => v.measurements)
