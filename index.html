@@ -1069,17 +1069,11 @@ function exportDataset() {
 
     const dimByPage = {};
     for (const [pg, lbl] of dimPages) {
-      const isLayout = needsRole(lbl.viewType);
       dimByPage[pg] = {
         view_type: lbl.viewType,
-        is_primary: lbl.isPrimary,
-        // layout pages: [{value, role}], technical: ["raw string"]
         measurements: lbl.measurements
       };
     }
-
-    // helper: get raw numeric string from a measurement entry
-    const rawStr = m => typeof m === 'object' ? m.value : m;
 
     const record = {
       file: f.name,
@@ -1089,19 +1083,6 @@ function exportDataset() {
         width_mm:  f.summary.width_mm,
         length_mm: f.summary.length_mm,
         height_mm: f.summary.height_mm,
-        all_measurements_mm: [...new Set(
-          dimPages.flatMap(([, v]) => v.measurements)
-            .map(m => {
-              const str = rawStr(m);
-              const n = parseFloat(str.replace(/[^0-9.]/g,''));
-              if (isNaN(n)) return null;
-              if (/mm/i.test(str)) return n;
-              if (/[mM]$/.test(str.trim())) return n * 1000;
-              if (/cm/i.test(str)) return n * 10;
-              return n;
-            })
-            .filter(Boolean)
-        )].sort((a,b)=>a-b)
       }
     };
     lines.push(JSON.stringify(record));
