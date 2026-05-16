@@ -278,8 +278,9 @@
   }
   .page-dot:hover { border-color: var(--accent); color: var(--accent); }
   .page-dot.current { border-color: var(--accent); background: rgba(124,106,247,.2); color: var(--accent); }
-  .page-dot.has-dim { background: rgba(106,247,184,.15); border-color: var(--accent3); color: var(--accent3); }
-  .page-dot.skipped { background: rgba(247,106,106,.08); border-color: #3a2020; color: var(--text3); }
+  .page-dot.has-dim  { background: rgba(106,247,184,.15); border-color: var(--accent3); color: var(--accent3); }
+  .page-dot.skipped  { background: rgba(247,106,106,.08); border-color: #3a2020; color: var(--text3); }
+  .page-dot.sub-asm  { background: rgba(247,220,106,.1);  border-color: #5a4a10; color: #c8a830; }
 
   /* ── RIGHT: LABEL PANEL ── */
   .label-panel {
@@ -398,10 +399,10 @@
     flex-shrink: 0;
     letter-spacing: .04em;
   }
-  .role-badge.width  { background: rgba(124,106,247,.2); color: var(--accent); }
-  .role-badge.length { background: rgba(247,162,106,.2); color: var(--accent2); }
-  .role-badge.height { background: rgba(106,247,184,.2); color: var(--accent3); }
-  .role-badge.unknown { background: rgba(136,136,160,.1); color: var(--text3); }
+  .role-badge.length_x { background: rgba(124,106,247,.2); color: var(--accent); }
+  .role-badge.length_y { background: rgba(247,162,106,.2); color: var(--accent2); }
+  .role-badge.height   { background: rgba(106,247,184,.2); color: var(--accent3); }
+  .role-badge.unknown  { background: rgba(136,136,160,.1); color: var(--text3); }
   .add-btn {
     padding: 0 10px;
     height: 28px;
@@ -550,6 +551,7 @@
         <option value="side_elevation">Side elevation</option>
         <option value="3d_render">3D render</option>
         <option value="technical_drawing">Technical drawing</option>
+        <option value="sub_assembly">Sub-assembly Drawing</option>
         <option value="skip">Skip (no dimensions)</option>
       </select>
       <button class="mark-btn mark-dim" onclick="quickMarkDimension()">+ Dimension</button>
@@ -585,6 +587,7 @@
           <option value="side_elevation">Side elevation</option>
           <option value="3d_render">3D render</option>
           <option value="technical_drawing">Technical drawing</option>
+          <option value="sub_assembly">Sub-assembly Drawing</option>
           <option value="skip">Skip (no dimensions)</option>
         </select>
       </div>
@@ -597,9 +600,9 @@
         <div class="measurements-list" id="measList"></div>
         <div id="roleRow" style="display:none; margin-bottom:4px;">
           <select id="newMeasRole" class="role-select-full">
-            <option value="unknown">? unknown</option>
-            <option value="length">L  length</option>
-            <option value="width">W  width</option>
+            <option value="unknown">?  unknown</option>
+            <option value="length_x">X  length_x</option>
+            <option value="length_y">Y  length_y</option>
             <option value="height">H  height</option>
           </select>
         </div>
@@ -619,12 +622,12 @@
       <h3>Booth Summary (mm)</h3>
       <div class="summary-grid">
         <div class="sum-field">
-          <label>LENGTH_MM</label>
-          <input type="number" id="sumLength" placeholder="4000" oninput="syncSummary()">
+          <label>LENGTH_X_MM</label>
+          <input type="number" id="sumLengthX" placeholder="6000" oninput="syncSummary()">
         </div>
         <div class="sum-field">
-          <label>WIDTH_MM</label>
-          <input type="number" id="sumWidth" placeholder="6000" oninput="syncSummary()">
+          <label>LENGTH_Y_MM</label>
+          <input type="number" id="sumLengthY" placeholder="4000" oninput="syncSummary()">
         </div>
         <div class="sum-field">
           <label>HEIGHT_MM</label>
@@ -675,7 +678,7 @@ document.getElementById('fileInput').addEventListener('change', async e => {
       rawBytes: ab,
       pageCount: pdfDoc.numPages,
       labels: {},
-      summary: { width_mm: null, length_mm: null, height_mm: null }
+      summary: { length_x_mm: null, length_y_mm: null, height_mm: null }
     });
   }
   e.target.value = '';
@@ -817,6 +820,7 @@ function renderPageStatusBar() {
     let cls = '';
     if (p === currentPage) cls = 'current';
     else if (lbl && lbl.viewType === 'skip') cls = 'skipped';
+    else if (lbl && lbl.viewType === 'sub_assembly') cls = 'sub-asm';
     else if (lbl && lbl.measurements?.length) cls = 'has-dim';
     return `<div class="page-dot ${cls}" onclick="jumpToPage(${p})" title="Page ${p}">${p}</div>`;
   }).join('');
@@ -832,6 +836,7 @@ function highlightPageDot() {
     d.className = 'page-dot';
     if (p === currentPage) d.classList.add('current');
     else if (lbl && lbl.viewType === 'skip') d.classList.add('skipped');
+    else if (lbl && lbl.viewType === 'sub_assembly') d.classList.add('sub-asm');
     else if (lbl && lbl.measurements?.length) d.classList.add('has-dim');
     d.onclick = () => jumpToPage(p);
   });
@@ -846,16 +851,16 @@ function jumpToPage(p) {
 function loadSummary() {
   const f = activeFile();
   if (!f) return;
-  document.getElementById('sumWidth').value  = f.summary.width_mm  || '';
-  document.getElementById('sumLength').value = f.summary.length_mm || '';
-  document.getElementById('sumHeight').value = f.summary.height_mm || '';
+  document.getElementById('sumLengthX').value = f.summary.length_x_mm || '';
+  document.getElementById('sumLengthY').value = f.summary.length_y_mm || '';
+  document.getElementById('sumHeight').value  = f.summary.height_mm   || '';
 }
 function syncSummary() {
   const f = activeFile();
   if (!f) return;
-  f.summary.width_mm  = +document.getElementById('sumWidth').value  || null;
-  f.summary.length_mm = +document.getElementById('sumLength').value || null;
-  f.summary.height_mm = +document.getElementById('sumHeight').value || null;
+  f.summary.length_x_mm = +document.getElementById('sumLengthX').value || null;
+  f.summary.length_y_mm = +document.getElementById('sumLengthY').value || null;
+  f.summary.height_mm   = +document.getElementById('sumHeight').value  || null;
 }
 
 // Auto-fill summary by scanning all labeled pages for W/L/H roles
@@ -873,25 +878,23 @@ function autoFillSummary() {
     return n; // bare number — assume mm
   };
 
-  let width_mm = null, length_mm = null, height_mm = null;
+  let length_x_mm = null, length_y_mm = null, height_mm = null;
 
-  // Scan all labeled pages
   for (const lbl of Object.values(f.labels)) {
     if (!needsRole(lbl.viewType)) continue;
     for (const m of (lbl.measurements || [])) {
       if (typeof m !== 'object') continue;
       const val = toMM(m.value);
       if (val === null) continue;
-      if (m.role === 'width'  && !width_mm)  width_mm  = val;
-      if (m.role === 'length' && !length_mm) length_mm = val;
-      if (m.role === 'height' && !height_mm) height_mm = val;
+      if (m.role === 'length_x' && !length_x_mm) length_x_mm = val;
+      if (m.role === 'length_y' && !length_y_mm) length_y_mm = val;
+      if (m.role === 'height'   && !height_mm)   height_mm   = val;
     }
   }
 
-  // Only fill fields that are currently empty — don't overwrite manual edits
-  if (width_mm  && !f.summary.width_mm)  f.summary.width_mm  = width_mm;
-  if (length_mm && !f.summary.length_mm) f.summary.length_mm = length_mm;
-  if (height_mm && !f.summary.height_mm) f.summary.height_mm = height_mm;
+  if (length_x_mm && !f.summary.length_x_mm) f.summary.length_x_mm = length_x_mm;
+  if (length_y_mm && !f.summary.length_y_mm) f.summary.length_y_mm = length_y_mm;
+  if (height_mm   && !f.summary.height_mm)   f.summary.height_mm   = height_mm;
 
   loadSummary(); // refresh UI
 }
@@ -922,6 +925,11 @@ function needsRole(viewType) {
   return ['floor_plan','elevation','side_elevation','3d_render'].includes(viewType);
 }
 
+// sub_assembly has numbers but they are irrelevant — label it but no role needed
+function isSubAssembly(viewType) {
+  return viewType === 'sub_assembly';
+}
+
 function updateRoleVisibility(viewType) {
   const roleRow = document.getElementById('roleRow');
   roleRow.style.display = needsRole(viewType) ? 'block' : 'none';
@@ -941,8 +949,9 @@ function renderMeasurements(arr, viewType) {
   el.innerHTML = arr.map((m, i) => {
     const val  = typeof m === 'object' ? m.value : m;
     const role = typeof m === 'object' ? (m.role || 'unknown') : 'unknown';
+    const roleLabel = {'length_x':'X','length_y':'Y','height':'H','unknown':'?'}[role] || role[0].toUpperCase();
     const badge = showRole
-      ? `<span class="role-badge ${role}">${role === 'unknown' ? '?' : role[0].toUpperCase()}</span>`
+      ? `<span class="role-badge ${role}">${roleLabel}</span>`
       : '';
     return `<div class="meas-item">
       ${badge}
@@ -1063,7 +1072,7 @@ function exportDataset() {
   const lines = [];
   for (const f of files) {
     const dimPages = Object.entries(f.labels)
-      .filter(([, v]) => v.viewType && v.viewType !== 'skip' && v.measurements?.length)
+      .filter(([, v]) => v.viewType && v.viewType !== 'skip')
       .sort((a, b) => +a[0] - +b[0]);
     if (!dimPages.length) continue;
 
@@ -1080,9 +1089,9 @@ function exportDataset() {
       total_pages: f.pageCount,
       dimensions_by_page: dimByPage,
       summary: {
-        length_mm: f.summary.length_mm,
-        width_mm:  f.summary.width_mm,
-        height_mm: f.summary.height_mm,
+        length_x_mm: f.summary.length_x_mm,
+        length_y_mm: f.summary.length_y_mm,
+        height_mm:   f.summary.height_mm,
       }
     };
     lines.push(JSON.stringify(record));
