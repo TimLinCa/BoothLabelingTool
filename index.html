@@ -94,6 +94,18 @@
     transition: background .15s;
   }
   .export-btn:hover { background: rgba(106,247,184,.08); }
+  .load-labels-btn {
+    padding: 6px 14px;
+    background: var(--surface2);
+    border: 1px solid var(--accent2);
+    color: var(--accent2);
+    border-radius: var(--r);
+    font-size: 13px; font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: background .15s;
+  }
+  .load-labels-btn:hover { background: rgba(247,162,106,.08); }
   .zip-btn {
     padding: 6px 14px;
     background: var(--surface2);
@@ -508,6 +520,10 @@
     + Load PDFs
   </button>
   <input type="file" id="fileInput" class="file-input" multiple accept=".pdf">
+  <button class="load-labels-btn" onclick="document.getElementById('labelsInput').click()" title="Load a previously exported JSONL to restore labels">
+    ↑ Load Labels
+  </button>
+  <input type="file" id="labelsInput" class="file-input" accept=".jsonl,.json">
   <div class="topbar-right">
     <div class="stat-pill">Files: <span id="statFiles">0</span></div>
     <div class="stat-pill">Labeled: <span id="statLabeled">0</span></div>
@@ -656,7 +672,8 @@ pdfjsLib.GlobalWorkerOptions.workerSrc =
   'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 // ── STATE ──
-let files = [];           // [{name, pdfDoc, pageCount, labels: {}, boothInfo: {}}]
+let files = [];
+let pendingLabels = {};  // filename → record, for labels loaded before PDFs
 let activeFileIdx = -1;
 let currentPage = 1;
 let zoom = 1.2;
@@ -672,19 +689,111 @@ document.getElementById('fileInput').addEventListener('change', async e => {
     if (files.find(x => x.name === f.name)) continue;
     const ab = await f.arrayBuffer();
     const pdfDoc = await pdfjsLib.getDocument({ data: ab.slice() }).promise;
-    files.push({
+    const entry = {
       name: f.name,
       pdfDoc,
       rawBytes: ab,
       pageCount: pdfDoc.numPages,
       labels: {},
       summary: { length_x_mm: null, length_y_mm: null, height_mm: null }
-    });
+    };
+    // Auto-match any pending labels from previously loaded JSONL
+    if (pendingLabels[f.name]) {
+      const record = pendingLabels[f.name];
+      if (record.dimensions_by_page) {
+        for (const [pg, lbl] of Object.entries(record.dimensions_by_page)) {
+          entry.labels[pg] = {
+            viewType:     lbl.view_type    || '',
+            isPrimary:    lbl.is_primary   || false,
+            measurements: lbl.measurements || []
+          };
+        }
+      }
+      if (record.summary) {
+        entry.summary = {
+          length_x_mm: record.summary.length_x_mm || null,
+          length_y_mm: record.summary.length_y_mm || null,
+          height_mm:   record.summary.height_mm   || null,
+        };
+      }
+      delete pendingLabels[f.name];
+      showToast(`Labels auto-matched for "${f.name}"`);
+    }
+    files.push(entry);
   }
   e.target.value = '';
   renderFileList();
   updateStats();
   if (activeFileIdx < 0 && files.length > 0) selectFile(0);
+});
+
+// ── LOAD LABELS ──
+document.getElementById('labelsInput').addEventListener('change', async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  e.target.value = '';
+
+  const text = await file.text();
+  const lines = text.trim().split('\n').filter(Boolean);
+
+  let matched = 0, skipped = 0, total = lines.length;
+
+  for (const line of lines) {
+    let record;
+    try { record = JSON.parse(line); }
+    catch { skipped++; continue; }
+
+    // Find the matching loaded PDF by filename
+    const fileIdx = files.findIndex(f => f.name === record.file);
+    if (fileIdx < 0) {
+      // PDF not loaded yet — store for auto-match when user loads it
+      pendingLabels[record.file] = record;
+      skipped++;
+      continue;
+    }
+
+    const f = files[fileIdx];
+
+    // ── Restore labels ──────────────────────────────
+    if (record.dimensions_by_page) {
+      f.labels = {};
+      for (const [pg, lbl] of Object.entries(record.dimensions_by_page)) {
+        f.labels[pg] = {
+          viewType:     lbl.view_type     || '',
+          isPrimary:    lbl.is_primary    || false,
+          measurements: lbl.measurements  || []
+        };
+      }
+    }
+
+    // ── Restore summary ─────────────────────────────
+    if (record.summary) {
+      f.summary = {
+        length_x_mm: record.summary.length_x_mm || null,
+        length_y_mm: record.summary.length_y_mm || null,
+        height_mm:   record.summary.height_mm   || null,
+      };
+    }
+
+    matched++;
+  }
+
+  // Refresh UI
+  renderFileList();
+  updateStats();
+  if (activeFileIdx >= 0) {
+    loadSummary();
+    loadPageLabel();
+    renderPageStatusBar();
+    renderReview();
+  }
+
+  // Report results
+  if (skipped > 0) {
+    showToast(`Loaded ${matched}/${total} — ${skipped} pending (load their PDFs to match)`);
+  } else {
+    showToast(`✓ Labels restored for ${matched} file${matched !== 1 ? 's' : ''}`);
+  }
 });
 
 function renderFileList() {
