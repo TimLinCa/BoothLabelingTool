@@ -166,8 +166,7 @@ const $ = id => document.getElementById(id);
 const SECTIONS = [
  {id:"ctx", idx:"00", title:"Booth context", fields:[
    {k:"booth_name", t:"text", lab:"Booth name", ph:"defaults to PDF file name"},
-   {k:"booth_no",   t:"text", lab:"Expected booth no.", ph:"3-3E02"},
- ], hint:"Booth name defaults to the PDF file name — edit only if it differs. Booth no. comes from the Exhibitor List."},
+ ], hint:"Booth name defaults to the PDF file name — edit only if it differs."},
 
  {id:"dim", idx:"01", title:"Dimensions as drawn", fields:[
    {row:[{k:"length_x",t:"num",lab:"Length X (m)"},{k:"length_y",t:"num",lab:"Length Y (m)"}]},
@@ -394,7 +393,6 @@ function formToRecord(filename){
   return {
     pdf_filename: filename,
     booth_name: txtv("booth_name")||"",
-    booth_no:   txtv("booth_no")||"",
     label:{
       booth_number:{detected:ynv("bno_detected")===true, value:txtv("bno_value")},
       dimensions:{length_x:numv("length_x"), length_y:numv("length_y")},
@@ -433,7 +431,7 @@ function recordToForm(rec){
   clearForm();
   const set=(k,v)=>{if(v!==null&&v!==undefined&&$("f_"+k))$("f_"+k).value=v;};
   const yn=(k,v)=>{if(v===true)segSet(k,"Yes");else if(v===false)segSet(k,"No");};
-  set("booth_name",rec.booth_name); set("booth_no",rec.booth_no);
+  set("booth_name",rec.booth_name);
   const L=rec.label||{};
   yn("bno_detected",L.booth_number?.detected); set("bno_value",L.booth_number?.value);
   set("length_x",L.dimensions?.length_x ?? L.dimensions?.width_m);
@@ -541,7 +539,7 @@ $("btnSave").onclick=()=>{
   if(current<0)return;
   const b=booths[current];
   const rec=formToRecord(b.filename);
-  if(!rec.booth_name||!rec.booth_no){alert("Fill in booth name and expected booth no. (section 00).");return;}
+  if(!rec.booth_name){alert("Fill in the booth name (section 00).");return;}
   b.record=rec; b.label=rec.label;
   setSaveState("Saved ✓",true); renderQueue();
 };
