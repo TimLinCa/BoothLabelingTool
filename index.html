@@ -141,6 +141,7 @@ input[type=file]{display:none}
 </main>
 
 <div id="saveBar">
+  <button class="btn" id="btnDelete" style="border-color:var(--warn);color:var(--warn)">Delete</button>
   <span id="saveState">No booth selected</span>
   <div class="navbtns">
     <button class="btn" id="btnPrev">←</button>
@@ -163,16 +164,13 @@ const $ = id => document.getElementById(id);
 /* ───────────────────────── schema form definition ─────────
    Sections follow the SmartProof AI-check order. */
 const SECTIONS = [
- {id:"ctx", idx:"00", title:"Exhibitor List context", fields:[
-   {k:"booth_name", t:"text", lab:"Booth name", ph:"MSC Mediterranean Shipping"},
+ {id:"ctx", idx:"00", title:"Booth context", fields:[
+   {k:"booth_name", t:"text", lab:"Booth name", ph:"defaults to PDF file name"},
    {k:"booth_no",   t:"text", lab:"Expected booth no.", ph:"3-3E02"},
-   {row:[{k:"expected_width_m",t:"num",lab:"Expected width (m)"},
-         {k:"expected_length_m",t:"num",lab:"Expected length (m)"}]},
-   {k:"expected_sides_open", t:"seg", lab:"Sides open per floor plan", opts:["1","2","3","4"]},
- ], hint:"Type these from the Exhibitor List / floor plan — they become the model's prompt context."},
+ ], hint:"Booth name defaults to the PDF file name — edit only if it differs. Booth no. comes from the Exhibitor List."},
 
  {id:"dim", idx:"01", title:"Dimensions as drawn", fields:[
-   {row:[{k:"width_m",t:"num",lab:"Width (m)"},{k:"length_m",t:"num",lab:"Length (m)"}]},
+   {row:[{k:"length_x",t:"num",lab:"Length X (m)"},{k:"length_y",t:"num",lab:"Length Y (m)"}]},
  ], hint:"Read from top view / layout plan. 10000 mm → 10.0. Leave blank = not shown."},
 
  {id:"open", idx:"02", title:"Sides open as drawn", fields:[
@@ -195,8 +193,7 @@ const SECTIONS = [
    {k:"tower_present", t:"yn", lab:"Structure rising above back wall / standalone / mid-booth?"},
    {grp:"tower_present", row:[{k:"tower_height_m",t:"num",lab:"Tallest height (m)"}]},
    {grp:"tower_present", k:"tower_setback_yn", t:"yn", lab:"Set back from nearest edge?"},
-   {grp:"tower_setback_yn", row:[{k:"tower_setback_m",t:"num",lab:"Setback distance (m)"}]},
- ], hint:"Pylon, signage tower, gateway frame, elevated branding box. Height from floor, excluding hanging truss. Set back = No means flush (0 m)."},
+ ], hint:"Pylon, signage tower, gateway frame, elevated branding box. Height from floor, excluding hanging truss. Set back = Yes if pulled in from the edge, No if flush."},
 
  {id:"deck", idx:"06", title:"Double deck", fields:[
    {k:"deck_present", t:"yn", lab:"Second occupiable floor (stairs/lift)?"},
@@ -398,12 +395,9 @@ function formToRecord(filename){
     pdf_filename: filename,
     booth_name: txtv("booth_name")||"",
     booth_no:   txtv("booth_no")||"",
-    expected_width_m:  numv("expected_width_m"),
-    expected_length_m: numv("expected_length_m"),
-    expected_sides_open: segGet("expected_sides_open")?parseInt(segGet("expected_sides_open")):null,
     label:{
       booth_number:{detected:ynv("bno_detected")===true, value:txtv("bno_value")},
-      dimensions:{width_m:numv("width_m"), length_m:numv("length_m")},
+      dimensions:{length_x:numv("length_x"), length_y:numv("length_y")},
       sides_open: so&&so!=="?"?parseInt(so):null,
       side_wall:{present:ynv("side_wall_present")===true,
                  length_m:numv("side_wall_length_m"), height_m:numv("side_wall_height_m")},
@@ -411,8 +405,7 @@ function formToRecord(filename){
                  height_m:numv("back_wall_height_m"), length_m:numv("back_wall_length_m")},
       tower_or_structure:{present:ynv("tower_present")===true,
                  tallest_height_m:numv("tower_height_m"),
-                 setback_from_nearest_edge_m:
-                   (ynv("tower_setback_yn")===false?0:(ynv("tower_setback_yn")===true?numv("tower_setback_m"):null))},
+                 setback:ynv("tower_setback_yn")},
       double_deck:{present:ynv("deck_present")===true,
                  double_deck_height_m:numv("deck_height_m"),
                  width_m:numv("deck_w"), length_m:numv("deck_l")},
@@ -441,11 +434,10 @@ function recordToForm(rec){
   const set=(k,v)=>{if(v!==null&&v!==undefined&&$("f_"+k))$("f_"+k).value=v;};
   const yn=(k,v)=>{if(v===true)segSet(k,"Yes");else if(v===false)segSet(k,"No");};
   set("booth_name",rec.booth_name); set("booth_no",rec.booth_no);
-  set("expected_width_m",rec.expected_width_m); set("expected_length_m",rec.expected_length_m);
-  segSet("expected_sides_open",rec.expected_sides_open);
   const L=rec.label||{};
   yn("bno_detected",L.booth_number?.detected); set("bno_value",L.booth_number?.value);
-  set("width_m",L.dimensions?.width_m); set("length_m",L.dimensions?.length_m);
+  set("length_x",L.dimensions?.length_x ?? L.dimensions?.width_m);
+  set("length_y",L.dimensions?.length_y ?? L.dimensions?.length_m);
   segSet("sides_open",L.sides_open);
   yn("side_wall_present",L.side_wall?.present);
   set("side_wall_length_m",L.side_wall?.length_m); set("side_wall_height_m",L.side_wall?.height_m);
@@ -453,9 +445,10 @@ function recordToForm(rec){
   set("back_wall_height_m",L.back_wall?.height_m); set("back_wall_length_m",L.back_wall?.length_m);
   yn("tower_present",L.tower_or_structure?.present);
   set("tower_height_m",L.tower_or_structure?.tallest_height_m ?? L.tower_or_structure?.max_height_m);
+  const tsb=L.tower_or_structure?.setback;
   const tsbM=L.tower_or_structure?.setback_from_nearest_edge_m ?? L.tower_or_structure?.setback_m;
-  if(tsbM>0){segSet("tower_setback_yn","Yes");set("tower_setback_m",tsbM);}
-  else if(tsbM===0){segSet("tower_setback_yn","No");}
+  if(tsb===true||tsbM>0){segSet("tower_setback_yn","Yes");}
+  else if(tsb===false||tsbM===0){segSet("tower_setback_yn","No");}
   yn("deck_present",L.double_deck?.present);
   set("deck_height_m",L.double_deck?.double_deck_height_m ?? L.double_deck?.height_m);
   set("deck_w",L.double_deck?.width_m); set("deck_l",L.double_deck?.length_m);
@@ -493,6 +486,7 @@ async function selectBooth(i){
   const b=booths[i];
   clearForm();
   if(b.record)recordToForm(b.record);
+  if(!$("f_booth_name").value) $("f_booth_name").value = b.filename.replace(/\.pdf$/i,"");
   setSaveState(b.label?"Saved ✓":"Not saved yet", !!b.label);
   if(b.file){await renderPDF(b.file);}
   else{$("viewer").innerHTML='<div id="viewerEmpty"><div class="big">PDF MISSING</div>Imported label without its PDF — reload the PDF to view.</div>';$("pgInfo").textContent="";}
@@ -553,6 +547,20 @@ $("btnSave").onclick=()=>{
 };
 $("btnPrev").onclick=()=>selectBooth(current-1);
 $("btnNext").onclick=()=>selectBooth(current+1);
+$("btnDelete").onclick=()=>{
+  if(current<0)return;
+  const b=booths[current];
+  if(!confirm(`Remove "${b.filename}" from the queue?`+(b.record?" Its saved label will be discarded.":"")))return;
+  booths.splice(current,1);
+  if(!booths.length){
+    current=-1; clearForm();
+    $("viewer").innerHTML='<div id="viewerEmpty"><div class="big">W × L × H</div>No booth loaded</div>';
+    $("pgInfo").textContent=""; pdfDoc=null;
+    setSaveState("No booth selected",false); renderQueue(); return;
+  }
+  current=Math.min(current, booths.length-1);
+  selectBooth(current);
+};
 document.addEventListener("keydown",e=>{
   if((e.ctrlKey||e.metaKey)&&e.key==="s"){e.preventDefault();$("btnSave").click();}
 });
