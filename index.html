@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>SmartProof · Booth Labeling Bench</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..100,400..800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <style>
@@ -112,6 +113,7 @@ input[type=file]{display:none}
   <button class="btn" id="btnImport">Import labels.jsonl</button>
   <span class="spacer"></span>
   <span id="exportNote">0 / 0 labeled</span>
+  <button class="btn" id="btnExportPdfs">Export PDFs</button>
   <button class="btn primary" id="btnExport">Export labels.jsonl</button>
   <input type="file" id="fileInput" accept="application/pdf" multiple>
   <input type="file" id="importInput" accept=".jsonl,.json">
@@ -603,6 +605,40 @@ $("btnExport").onclick=()=>{
   const a=document.createElement("a");
   a.href=URL.createObjectURL(blob);a.download="labels.jsonl";a.click();
   URL.revokeObjectURL(a.href);
+};
+
+$("btnExportPdfs").onclick=async()=>{
+  if(!booths.length){alert("No PDFs loaded.");return;}
+  const withFile=booths.filter(b=>b.file);
+  // manifest of everything in the queue, so you can see what's selected
+  const manifest=["filename\tlabel_status\tpdf_in_zip",
+    ...booths.map(b=>`${b.filename}\t${b.record?"labeled":"unlabeled"}\t${b.file?"yes":"no (import only)"}`)
+  ].join("\n")+"\n";
+  if(!withFile.length){
+    // no actual PDF files in memory — still let them export the list
+    const blob=new Blob([manifest],{type:"text/plain"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="pdf_manifest.txt";a.click();
+    URL.revokeObjectURL(a.href);
+    alert("No PDF files are in memory (these rows were imported). Exported the manifest list instead.");
+    return;
+  }
+  const btn=$("btnExportPdfs"); const orig=btn.textContent;
+  btn.textContent="Zipping…"; btn.disabled=true;
+  try{
+    const zip=new JSZip();
+    const folder=zip.folder("pdfs");
+    withFile.forEach(b=>folder.file(b.filename,b.file));
+    zip.file("pdf_manifest.txt",manifest);
+    const blob=await zip.generateAsync({type:"blob"});
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(blob);a.download="booth_pdfs.zip";a.click();
+    URL.revokeObjectURL(a.href);
+  }catch(err){
+    alert("Could not build the zip: "+err);
+  }finally{
+    btn.textContent=orig; btn.disabled=false;
+  }
 };
 
 /* warn before closing with unsaved work — labels live only in memory */
