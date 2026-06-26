@@ -180,15 +180,14 @@ const SECTIONS = [
 
  {id:"swall", idx:"03", title:"Side wall", fields:[
    {k:"side_wall_present", t:"yn", lab:"Solid wall on an otherwise-open side?"},
-   {grp:"side_wall_present", row:[{k:"side_wall_length_m",t:"num",lab:"Length (m)"},
-                                  {k:"side_wall_height_m",t:"num",lab:"Height (m)"}]},
- ], hint:"A partial solid wall (≥30% of that side). Excludes fences, railings, towers, pylons, gates, truss."},
+   {grp:"side_wall_present", k:"side_walls", t:"walls", kind:"side", lab:"Side walls — add one per wall"},
+ ], hint:"A partial solid wall (≥30% of that side). Excludes fences, railings, towers, pylons, gates, truss. Each side wall has its own length and height."},
 
  {id:"bwall", idx:"04", title:"Back wall", fields:[
    {k:"back_wall_present", t:"yn", lab:"Full-length solid wall present?"},
-   {grp:"back_wall_present", row:[{k:"back_wall_height_m",t:"num",lab:"Height (m)"},
-                                  {k:"back_wall_length_m",t:"num",lab:"Length (m)"}]},
- ], hint:"Spans the full booth side length (≥90% if dimensions are approximate)."},
+   {grp:"back_wall_present", row:[{k:"back_wall_height_m",t:"num",lab:"Height (m) — shared by all back walls"}]},
+   {grp:"back_wall_present", k:"back_walls", t:"walls", kind:"back", lab:"Back walls — add one per wall"},
+ ], hint:"Spans the full booth side length (≥90% if approximate). All back walls share one height; give each wall's length."},
 
  {id:"tower", idx:"05", title:"Tower / other structure", fields:[
    {k:"tower_present", t:"yn", lab:"Structure rising above back wall / standalone / mid-booth?"},
@@ -277,6 +276,14 @@ function renderField(f, sec){
     add.textContent="+ Add door"; add.style.cssText="padding:5px 10px;font-size:12px;margin-top:8px";
     add.onclick=()=>{addDoorRow();markStorageTouched();};
     el.appendChild(list); el.appendChild(add);
+  }else if(f.t==="walls"){
+    const kind=f.kind;
+    el=document.createElement("div");
+    const list=document.createElement("div"); list.id=(kind==="back"?"backWallsList":"sideWallsList");
+    const add=document.createElement("button"); add.type="button"; add.className="btn";
+    add.textContent="+ Add wall"; add.style.cssText="padding:5px 10px;font-size:12px;margin-top:8px";
+    add.onclick=()=>{addWallRow(kind);markWallTouched(kind);};
+    el.appendChild(list); el.appendChild(add);
   }
   wrap.appendChild(el);
   return wrap;
@@ -319,6 +326,8 @@ function doorComplianceOf(location, swing){
     return {compliance:"rejected",  // unknown / not set
       suggestion:"No door swing direction detected. Please revise your design and add a 'door swings inward' sign or text."};
   }
+  if(location==="unknown") return {compliance:"rejected",
+    suggestion:"Door location could not be determined. Please revise your design to clearly show the door inside the booth, or add a 'door swings inward' sign or text."};
   return {compliance:null, suggestion:""};   // location not chosen yet
 }
 function miniSeg(opts, value, onchange){
@@ -346,7 +355,7 @@ function addDoorRow(loc=null, swing=null){
   rm.onclick=()=>{row.remove();renumberDoors();markStorageTouched();};
   head.appendChild(title); head.appendChild(rm);
   const locLab=document.createElement("label"); locLab.className="fl"; locLab.textContent="Location";
-  const locSeg=miniSeg([{label:"Inside booth",value:"inside_booth"},{label:"Booth edge",value:"booth_edge"}],
+  const locSeg=miniSeg([{label:"Inside booth",value:"inside_booth"},{label:"Booth edge",value:"booth_edge"},{label:"Unknown",value:"unknown"}],
                        loc, ()=>{recomputeDoor(row);markStorageTouched();});
   locSeg.classList.add("door-loc");
   const swLab=document.createElement("label"); swLab.className="fl"; swLab.style.marginTop="6px"; swLab.textContent="Swing direction";
@@ -384,6 +393,44 @@ function readDoors(){
   return doors;
 }
 
+/* ───────────────────────── walls widget ──────────────────── */
+const wallListEl=kind=>$(kind==="back"?"backWallsList":"sideWallsList");
+function markWallTouched(kind){const s=$(kind==="back"?"sec_bwall":"sec_swall"); if(s)s.classList.add("touched"); markDirty();}
+function addWallRow(kind, data){
+  const list=wallListEl(kind); if(!list)return;
+  const row=document.createElement("div"); row.className="wall-row";
+  row.style.cssText="border:1px solid var(--line);border-radius:7px;padding:8px;margin-top:8px;background:var(--bg);display:flex;gap:8px;align-items:flex-end";
+  const lenWrap=document.createElement("div"); lenWrap.style.flex="1";
+  const lenLab=document.createElement("label"); lenLab.className="fl"; lenLab.textContent="Length (m)";
+  const lenIn=document.createElement("input"); lenIn.type="number"; lenIn.step="0.1"; lenIn.className="wall-len"; lenIn.placeholder="null";
+  if(data&&data.length_m!=null)lenIn.value=data.length_m;
+  lenIn.addEventListener("input",()=>markWallTouched(kind));
+  lenWrap.append(lenLab,lenIn); row.appendChild(lenWrap);
+  if(kind==="side"){   // side walls carry their own height; back walls share one
+    const hWrap=document.createElement("div"); hWrap.style.flex="1";
+    const hLab=document.createElement("label"); hLab.className="fl"; hLab.textContent="Height (m)";
+    const hIn=document.createElement("input"); hIn.type="number"; hIn.step="0.1"; hIn.className="wall-h"; hIn.placeholder="null";
+    if(data&&data.height_m!=null)hIn.value=data.height_m;
+    hIn.addEventListener("input",()=>markWallTouched(kind));
+    hWrap.append(hLab,hIn); row.appendChild(hWrap);
+  }
+  const rm=document.createElement("button"); rm.type="button"; rm.textContent="✕"; rm.className="zoombtn";
+  rm.style.cssText="width:26px;height:30px;font-size:12px;flex:none";
+  rm.onclick=()=>{row.remove();markWallTouched(kind);};
+  row.appendChild(rm);
+  list.appendChild(row);
+}
+function readWalls(kind){
+  const list=wallListEl(kind); const out=[]; if(!list)return out;
+  list.querySelectorAll(".wall-row").forEach(r=>{
+    const len=r.querySelector(".wall-len").value.trim();
+    const obj={length_m: len===""?null:parseFloat(len)};
+    if(kind==="side"){const h=r.querySelector(".wall-h").value.trim(); obj.height_m=h===""?null:parseFloat(h);}
+    out.push(obj);
+  });
+  return out;
+}
+
 /* ───────────────────────── form <-> label object ─────────── */
 const numv = k => {const v=$("f_"+k).value.trim(); return v===""?null:parseFloat(v);};
 const txtv = k => {const v=$("f_"+k).value.trim(); return v===""?null:v;};
@@ -399,10 +446,9 @@ function formToRecord(filename){
       booth_number:{detected:ynv("bno_detected")===true, value:txtv("bno_value")},
       dimensions:{length_x:numv("length_x"), length_y:numv("length_y")},
       sides_open: so&&so!=="?"?parseInt(so):null,
-      side_wall:{present:ynv("side_wall_present")===true,
-                 length_m:numv("side_wall_length_m"), height_m:numv("side_wall_height_m")},
+      side_wall:{present:ynv("side_wall_present")===true, walls:readWalls("side")},
       back_wall:{present:ynv("back_wall_present")===true,
-                 height_m:numv("back_wall_height_m"), length_m:numv("back_wall_length_m")},
+                 height_m:numv("back_wall_height_m"), walls:readWalls("back")},
       tower_or_structure:{present:ynv("tower_present")===true,
                  tallest_height_m:numv("tower_height_m"),
                  setback:ynv("tower_setback_yn")},
@@ -427,6 +473,8 @@ function clearForm(){
   document.querySelectorAll("#formRoot .seg button").forEach(b=>b.classList.remove("on"));
   document.querySelectorAll(".sec").forEach(s=>s.classList.remove("touched"));
   const dl=$("doorsList"); if(dl)dl.innerHTML="";
+  const bw=$("backWallsList"); if(bw)bw.innerHTML="";
+  const sw=$("sideWallsList"); if(sw)sw.innerHTML="";
   refreshGroups();
 }
 function recordToForm(rec){
@@ -440,9 +488,15 @@ function recordToForm(rec){
   set("length_y",L.dimensions?.length_y ?? L.dimensions?.length_m);
   segSet("sides_open",L.sides_open);
   yn("side_wall_present",L.side_wall?.present);
-  set("side_wall_length_m",L.side_wall?.length_m); set("side_wall_height_m",L.side_wall?.height_m);
+  (L.side_wall?.walls
+     ?? (L.side_wall?.length_m!=null||L.side_wall?.height_m!=null
+          ? [{length_m:L.side_wall?.length_m, height_m:L.side_wall?.height_m}] : [])
+  ).forEach(w=>addWallRow("side",w));
   yn("back_wall_present",L.back_wall?.present);
-  set("back_wall_height_m",L.back_wall?.height_m); set("back_wall_length_m",L.back_wall?.length_m);
+  set("back_wall_height_m",L.back_wall?.height_m);
+  (L.back_wall?.walls
+     ?? (L.back_wall?.length_m!=null ? [{length_m:L.back_wall?.length_m}] : [])
+  ).forEach(w=>addWallRow("back",w));
   yn("tower_present",L.tower_or_structure?.present);
   set("tower_height_m",L.tower_or_structure?.tallest_height_m ?? L.tower_or_structure?.max_height_m);
   const tsb=L.tower_or_structure?.setback;
